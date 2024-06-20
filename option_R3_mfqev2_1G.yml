@@ -1,0 +1,125 @@
+dataset:
+  train:  # LMDB
+    type: MFQEv2Dataset
+    
+    # for lmdb
+    root: /home/***/mfqe/
+    gt_folder: train_raw_yuv/
+    lq_folder: RA/train_qp_down/QP47/
+    ref_folder: RA/train_qp_yuv/QP51/
+
+    # for dataset
+    gt_path: RA_train_gt_qp47.lmdb
+    lq_path: RA_train_lq_qp47.lmdb
+    ref_path: RA_train_ref_qp47.lmdb
+
+    meta_info_fp: meta_info.txt
+    gt_size: 128  # ground truth patch size: gt_size * gt_size
+    use_flip: True
+    use_rot: True  # rotation per 90 degrees
+    random_reverse: False
+
+    # for datasampler
+    enlarge_ratio: 300  # enlarge dataset by randomly cropping.
+
+    # for dataloader
+    num_worker_per_gpu: 12 # 12 in total. mainly affect IO speed
+    batch_size_per_gpu: 4 # bs=32, divided by 4 GPUs
+
+  val:  # Disk IO
+    type: VideoTestMFQEv2Dataset
+    root: /home/***/mfqe/
+    gt_path: test_raw_yuv/
+    lq_path: RA/test_qp_down/QP47/
+    ref_path: RA/test_qp_yuv/QP51/
+  test:
+    type: VideoTestMFQEv2Dataset
+    root: /home/***/mfqe/
+    gt_path: test_raw_yuv/
+    lq_path: RA/test_qp_down/QP47/
+    ref_path: RA/test_qp_yuv/QP51/
+
+
+network:
+  radius: 3  # total num of input frame = 2 * radius + 1
+  stdf:
+    in_nc: 1  # 1 for Y
+    out_nc: 48
+    nf: 48  # num of feature maps
+    nb: 3  # num of conv layers
+    base_ks: 3
+    deform_ks: 5  # size of the deformable kernel
+  
+  self_alig:
+    in_nc: 1 # 1 for Y
+    out_nc: 48
+    nf: 48  # num of feature maps
+    nb: 3  # num of conv layers
+    deform_ks: 5
+  
+  extractor:
+    in_nc: 1  # 1 for Y
+    nf: 48 # num of feature maps
+    base_ks: 3
+  
+  upnet:
+    base_ks: 3
+    nf: 48
+    in_nc: 48
+    scale_factor: 2
+
+  attention:
+    in_nc: 48  # = out_nc of stdf
+    base_ks: 3
+    nf: 48
+    nb: 2
+
+  fusion:
+    in_nc: 48  # = out_nc of stdf
+    out_nc: 1  # 1 for Y
+    nf: 48
+    base_ks: 3
+
+
+train:
+  exp_name: RCVSR_RA_QP47  # default: timestr. None: ~
+  random_seed: 7
+  pre-val: False  # evaluate criterion before training, e.g., ori PSNR
+  num_iter: !!float 50e+4
+  interval_print: !!float 400
+  interval_val: !!float 10e+3  # also save model
+  pbar_len: 100
+  phase: resume # iume,train
+
+  optim:
+    type: Adam
+    lr: !!float 1e-4  # init lr of scheduler
+    betas: [0.9, 0.999]
+    eps: !!float 1e-08
+
+  scheduler:
+    is_on: False
+    type: CosineAnnealingitartLR
+    periods: [!!float 5e+4, !!float 5e+4, !!float 5e+4, !!float 5e+4, !!float 5e+4, !!float 5e+4]  # epoch interval
+    itart_weights: [1, 0.5, 0.5, 0.5, 0.5, 0.5]
+    eta_min: !!float 1e-7
+
+  loss:
+    type: CharbonnierLoss
+    eps: !!float 1e-5
+
+  texloss:
+    type: LogcoshLoss
+    eps: !!float 1e-5
+
+  criterion:
+    type: PSNR
+    unit: dB
+
+test:
+  restore_iter: 20000
+  pbar_len: 100
+
+  criterion:
+    type: PSNR
+    unit: dB
